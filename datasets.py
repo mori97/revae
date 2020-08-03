@@ -1,8 +1,7 @@
+from itertools import chain
+
 import torch
 from torchvision import datasets, transforms
-
-CELEBA_MEAN = (0.5063, 0.4258, 0.3832)
-CELEBA_STD = (0.3043, 0.2839, 0.2834)
 
 
 def get_celeba():
@@ -10,15 +9,23 @@ def get_celeba():
     """
     transform = transforms.Compose([
         transforms.Resize((64, 64)),
-        transforms.ToTensor(),
-        transforms.Normalize(CELEBA_MEAN, CELEBA_STD)])
-    celeba = datasets.CelebA('./data', transform=transform,
-                             download=True)
+        transforms.ToTensor()])
     # Use only 18/40 labels as described in Appendix C.1
     mask = torch.tensor(
         [False, True, False, True, False, True, False, False, True, True,
          False, True, True, True, False, True, False, False, True, False,
          True, False, False, False, True, False, True, False, True, False,
          False, True, False, True, False, False, False, False, True, True])
-    ret = [(img, label[mask]) for img, label in celeba]
-    return ret
+
+    train = datasets.CelebA('./data', split='train', transform=transform,
+                            download=True)
+    valid = datasets.CelebA('./data', split='valid', transform=transform,
+                            download=True)
+    test = datasets.CelebA('./data', split='test', transform=transform,
+                           download=True)
+
+    # Use 'train' split and 'valid' split as the training set
+    train = [(img, label[mask]) for img, label in chain(train, valid)]
+    test = [(img, label[mask]) for img, label in test]
+
+    return train, test
