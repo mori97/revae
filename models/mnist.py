@@ -8,7 +8,6 @@ class _Encoder(nn.Module):
     def __init__(self, z_dim):
         super(_Encoder, self).__init__()
 
-        self._z_dim = z_dim
         self.fc1 = nn.Linear(784, 600)
         self.fc2 = nn.Linear(600, 600)
         self.fc3 = nn.Linear(600, 2 * z_dim)
@@ -16,7 +15,7 @@ class _Encoder(nn.Module):
     def forward(self, x):
         h = F.relu(self.fc1(x))
         h = F.relu(self.fc2(h))
-        mu, logvar = torch.split(self.fc3(h), self._z_dim, dim=1)
+        mu, logvar = torch.chunk(self.fc3(h), 2, dim=1)
         return mu, logvar
 
 
@@ -55,11 +54,10 @@ class _ConditionalPrior(nn.Module):
     def __init__(self, z_c_dim):
         super(_ConditionalPrior, self).__init__()
 
-        self._z_c_dim = z_c_dim
         self.fc1 = nn.Linear(10, 50)
         self.fc2 = nn.Linear(50, 2 * z_c_dim)
 
     def forward(self, y):
         h = F.relu(self.fc1(y))
-        mu, logvar = torch.split(self.fc2(h), self._z_c_dim, dim=1)
+        mu, logvar = torch.chunk(self.fc2(h), 2, dim=1)
         return mu, logvar
