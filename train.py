@@ -1,5 +1,6 @@
 import argparse
 
+import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 import torch.utils.data
@@ -8,6 +9,10 @@ from torch.utils.tensorboard import SummaryWriter
 import datasets
 import models
 from utils import AverageMeter
+
+# Plot reconstructions every PLOT_INTERVAL epochs in the test time
+PLOT_INTERVAL = 5
+PLOT_IDX = (19, 2, 1, 13, 14, 8, 4, 9, 18, 0)
 
 
 def train(model, data_loader, optimizer, device, epoch, writer):
@@ -29,7 +34,7 @@ def train(model, data_loader, optimizer, device, epoch, writer):
     writer.add_scalar('train/lower bound', lb_meter.avg, epoch)
 
 
-def test(model, data_loader, device, epoch, writer):
+def test(model, data_loader, device, epoch, writer, plot_data):
     model.eval()
 
     recon_loss_meter = AverageMeter()
@@ -53,6 +58,17 @@ def test(model, data_loader, device, epoch, writer):
 
         writer.add_scalar('test/recon loss', recon_loss_meter.avg, epoch)
         writer.add_scalar('test/accuracy', accu_meter.avg, epoch)
+
+        if epoch % PLOT_INTERVAL == 0:
+            plot_data = plot_data.view(10, 784).to(device)
+            z_mu, _ = model.encoder(plot_data)
+            recon = model.decoder(z_mu).cpu().view(-1, 28, 28).numpy()
+
+            fig, ax = plt.subplots(1, 10)
+            for i in range(10):
+                ax[i].axis('off')
+                ax[i].imshow(recon[i], cmap='binary', vmin=0, vmax=1)
+            writer.add_figure('recon', fig, epoch)
 
 
 def main():
@@ -95,9 +111,17 @@ def main():
 
     writer = SummaryWriter(log_dir=args.log_dir)
 
+    plot_data = torch.stack(
+        [test_dataset[i][0][0, ...] for i in PLOT_IDX], dim=0)
+    fig, ax = plt.subplots(1, 10)
+    for i in range(10):
+        ax[i].axis('off')
+        ax[i].imshow(plot_data[i], cmap='binary', vmin=0, vmax=1)
+    writer.add_figure('origin', fig)
+
     for epoch in range(1, args.epochs + 1):
         train(model, train_loader, optimizer, device, epoch, writer)
-        test(model, test_loader, device, epoch, writer)
+        test(model, test_loader, device, epoch, writer, plot_data)
 
     writer.close()
 
