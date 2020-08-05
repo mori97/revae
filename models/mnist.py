@@ -84,7 +84,6 @@ class REVAEMNIST(nn.Module):
         self.classifier = _Classifier(z_c_dim)
         self.cond_prior = _ConditionalPrior(z_c_dim)
 
-
     @property
     def z_c_dim(self):
         return self._z_c_dim
