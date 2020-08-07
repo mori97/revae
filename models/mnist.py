@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributions.categorical import Categorical
 from torch.distributions.normal import Normal
 
 from .common import reparameterize
@@ -105,8 +106,8 @@ class REVAEMNIST(nn.Module):
             torch.Tensor : The negative lower bound of each sample.
                 The shape of returned value is (N,).
         """
-        # TODO: Unsupervised case
         eye = torch.eye(10, device=y.device)
+        uns_mask = (y == -1)  # Unsupervised mask
         batch_size = x.size(0)
 
         z_mu, z_logvar = self.encoder(x)
@@ -114,8 +115,11 @@ class REVAEMNIST(nn.Module):
         z_c, z_exc = z[:, :self.z_c_dim], z[:, self.z_c_dim:]
         recon = self.decoder(z)
 
-        # log q(y|z_c)
+        # Sample y for the samples without labels
         h = F.log_softmax(self.classifier(z_c), dim=1)
+        if uns_mask.any():
+            y[uns_mask] = Categorical(h[uns_mask].exp()).sample()
+        # log q(y|z_c)
         log_q_y_zc = -F.nll_loss(h, y, reduction='none')
         # log p(x|z)
         log_p_x_z = -F.binary_cross_entropy(recon, x, reduction='none').sum(1)
@@ -140,7 +144,9 @@ class REVAEMNIST(nn.Module):
 
         # Calculate the lower bound
         h = log_p_x_z + log_p_z_y - log_q_y_zc - log_q_z_x
-        coef = torch.exp(log_q_y_zc - log_q_y_x)
-        lb = coef * h + log_q_y_x
+        zeros = torch.zeros_like(h)
+        ones = torch.ones_like(h)
+        coef = torch.where(uns_mask, ones, torch.exp(log_q_y_zc - log_q_y_x))
+        lb = coef * h + torch.where(uns_mask, zeros, log_q_y_x)
 
         return -lb
