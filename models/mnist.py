@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -136,8 +138,9 @@ class REVAEMNIST(nn.Module):
         h = reparameterize(z_mu[:, :self.z_c_dim], z_logvar[:, :self.z_c_dim],
                            n_samples=128)
         h = self.classifier(h.reshape(128 * batch_size, h.size(2)))
-        h = F.softmax(h, dim=1).reshape(128, batch_size, h.size(1))
-        log_q_y_x = torch.sum(torch.mean(h, dim=0) * y, dim=1).log()
+        h = F.log_softmax(h, dim=1).reshape(128, batch_size, h.size(1))
+        h = torch.logsumexp(h, dim=0) - math.log(128)
+        log_q_y_x = torch.sum(h * y, dim=1)
         # log q(z|x)
         z_std = torch.exp(0.5 * z_logvar)
         log_q_z_x = Normal(z_mu, z_std).log_prob(z).sum(1)
