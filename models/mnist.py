@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions.categorical import Categorical
 from torch.distributions.normal import Normal
 
 from .common import reparameterize
@@ -115,16 +114,17 @@ class REVAEMNIST(nn.Module):
         z_c, z_exc = z[:, :self.z_c_dim], z[:, self.z_c_dim:]
         recon = self.decoder(z)
 
-        # Sample y for the samples without labels
+        # Convert y to one-hot vector and Sample y for those without labels
+        y[uns_mask] = 0
+        y = eye[y]
         h = F.log_softmax(self.classifier(z_c), dim=1)
-        if uns_mask.any():
-            y[uns_mask] = Categorical(h[uns_mask].exp()).sample()
+        y[uns_mask] = F.gumbel_softmax(h[uns_mask], tau=0.5)
         # log q(y|z_c)
-        log_q_y_zc = -F.nll_loss(h, y, reduction='none')
+        log_q_y_zc = torch.sum(h * y, dim=1)
         # log p(x|z)
         log_p_x_z = -F.binary_cross_entropy(recon, x, reduction='none').sum(1)
         # log p(z_c|y)
-        z_c_mu, z_c_logvar = self.cond_prior(eye[y])
+        z_c_mu, z_c_logvar = self.cond_prior(y)
         z_c_std = torch.exp(0.5 * z_c_logvar)
         log_p_zc_y = Normal(z_c_mu, z_c_std).log_prob(z_c).sum(1)
         # log p(z_\c)
@@ -137,7 +137,7 @@ class REVAEMNIST(nn.Module):
                            n_samples=128)
         h = self.classifier(h.reshape(128 * batch_size, h.size(2)))
         h = F.softmax(h, dim=1).reshape(128, batch_size, h.size(1))
-        log_q_y_x = torch.mean(h, dim=0)[torch.arange(batch_size), y].log()
+        log_q_y_x = torch.sum(torch.mean(h, dim=0) * y, dim=1).log()
         # log q(z|x)
         z_std = torch.exp(0.5 * z_logvar)
         log_q_z_x = Normal(z_mu, z_std).log_prob(z).sum(1)
