@@ -120,7 +120,7 @@ class REVAEMNIST(nn.Module):
         y[uns_mask] = 0
         y = eye[y]
         h = F.log_softmax(self.classifier(z_c), dim=1)
-        y[uns_mask] = F.gumbel_softmax(h[uns_mask], tau=0.5)
+        y[uns_mask] = F.gumbel_softmax(h[uns_mask], tau=0.1)
         # log q(y|z_c)
         log_q_y_zc = torch.sum(h * y, dim=1)
         # log p(x|z)
