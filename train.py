@@ -101,16 +101,16 @@ def main():
     parser.add_argument('--log-dir',
                         help='TensorBoard save directory location.',
                         type=str, default=None)
-    parser.add_argument('--supervised-rate', '-s',
-                        help='Supervised rate.',
+    parser.add_argument('--supervision-rate', '-s',
+                        help='Supervision rate.',
                         type=float, default=0.2)
     args = parser.parse_args()
 
     if_use_cuda = torch.cuda.is_available() and args.gpu >= 0
     device = torch.device('cuda:{}'.format(args.gpu) if if_use_cuda else 'cpu')
 
-    train_dataset, test_dataset = \
-        datasets.get_fashion_mnist(supervision_rate=0.2)
+    train_dataset, test_dataset =\
+        datasets.get_fashion_mnist(supervision_rate=args.supervision_rate)
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True,
         collate_fn=_collate_train, num_workers=2, pin_memory=if_use_cuda)
