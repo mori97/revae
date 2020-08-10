@@ -68,15 +68,15 @@ class _ConditionalPrior(nn.Module):
         return mu, logvar
 
 
-class REVAEMNIST(nn.Module):
-    """Reparameterized VAE for the MNIST dataset.
+class BaseREVAEMNIST(nn.Module):
+    r"""A base class of the Reparameterized VAE (REVAE) for the MNIST dataset.
 
     Args:
         z_c_dim (int): The dimension of z_c.
         z_exc_dim (int): The dimension of z_\c.
     """
     def __init__(self, z_c_dim, z_exc_dim):
-        super(REVAEMNIST, self).__init__()
+        super(BaseREVAEMNIST, self).__init__()
 
         self._z_c_dim = z_c_dim
         self._z_exc_dim = z_exc_dim
@@ -101,7 +101,37 @@ class REVAEMNIST(nn.Module):
         Args:
             x (torch.Tensor): Samples of shape (N, 784).
                 where N is the batch size.
-            y (torch.Tensor): The labels of shape (N,).
+            y (torch.Tensor): The labels of shape (N,). -1 denotes unsupervised
+                samples.
+
+        Returns:
+            torch.Tensor : The negative lower bound of each sample.
+                The shape of returned value is (N,).
+        """
+        raise NotImplementedError()
+
+
+class REVAEMNIST(BaseREVAEMNIST):
+    r"""Reparameterized VAE for the MNIST dataset.
+    This model is optimized by the lower bound described in the Appendix B.2
+    of the original paper.
+
+    Args:
+        z_c_dim (int): The dimension of z_c.
+        z_exc_dim (int): The dimension of z_\c.
+    """
+    def __init__(self, z_c_dim, z_exc_dim):
+        super(REVAEMNIST, self).__init__(z_c_dim, z_exc_dim)
+
+    def forward(self, x, y):
+        """Output the upper bound (the negative lower bound) of each sample for
+        optimization.
+
+        Args:
+            x (torch.Tensor): Samples of shape (N, 784).
+                where N is the batch size.
+            y (torch.Tensor): The labels of shape (N,). -1 denotes unsupervised
+                samples.
 
         Returns:
             torch.Tensor : The negative lower bound of each sample.
