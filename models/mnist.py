@@ -111,6 +111,13 @@ class BaseREVAEMNIST(nn.Module):
         raise NotImplementedError()
 
 
+def _check_label(labels):
+    n_uns = (labels == -1).sum().item()
+    if not (labels[:n_uns] == -1).all():
+        raise RuntimeError(
+            'Unsupervised samples should come before the supervised samples.')
+
+
 class REVAEMNIST(BaseREVAEMNIST):
     r"""Reparameterized VAE for the MNIST dataset.
     This model is optimized by the lower bound described in the Appendix B.2
@@ -138,7 +145,8 @@ class REVAEMNIST(BaseREVAEMNIST):
                 The shape of returned value is (N,).
         """
         eye = torch.eye(10, device=y.device)
-        uns_mask = (y == -1)  # Unsupervised mask
+        _check_label(y)
+        n_uns = (y == -1).sum().item()  # Number of unsupervised samples
         batch_size = x.size(0)
 
         z_mu, z_logvar = self.encoder(x)
@@ -147,10 +155,10 @@ class REVAEMNIST(BaseREVAEMNIST):
         recon = self.decoder(z)
 
         # Convert y to one-hot vector and Sample y for those without labels
-        y[uns_mask] = 0
-        y = eye[y]
         h = F.log_softmax(self.classifier(z_c), dim=1)
-        y[uns_mask] = F.gumbel_softmax(h[uns_mask], tau=0.1)
+        y_uns = F.gumbel_softmax(h[:n_uns], tau=0.1)
+        y_sup = eye[y[n_uns:]]
+        y = torch.cat((y_uns, y_sup), dim=0)
         # log q(y|z_c)
         log_q_y_zc = torch.sum(h * y, dim=1)
         # log p(x|z)
@@ -164,22 +172,24 @@ class REVAEMNIST(BaseREVAEMNIST):
         log_p_zexc = dist.log_prob(z_exc).sum(1)
         # log p(z|y)
         log_p_z_y = log_p_zc_y + log_p_zexc
-        # log q(y|x)  ( Draw 128 points from q(z_c|x) )
-        h = reparameterize(z_mu[:, :self.z_c_dim], z_logvar[:, :self.z_c_dim],
+        # log q(y|x)  (Draw 128 points from q(z_c|x). Supervised samples only)
+        h = reparameterize(z_mu[n_uns:, :self.z_c_dim],
+                           z_logvar[n_uns:, :self.z_c_dim],
                            n_samples=128)
-        h = self.classifier(h.reshape(128 * batch_size, h.size(2)))
-        h = F.log_softmax(h, dim=1).reshape(128, batch_size, h.size(1))
+        h = self.classifier(h.reshape(128 * (batch_size - n_uns), h.size(2)))
+        h = F.log_softmax(h, dim=1).reshape(128, batch_size - n_uns, h.size(1))
         h = torch.logsumexp(h, dim=0) - math.log(128)
-        log_q_y_x = torch.sum(h * y, dim=1)
+        log_q_y_x = torch.sum(h * y[n_uns:], dim=1)
         # log q(z|x)
         z_std = torch.exp(0.5 * z_logvar)
         log_q_z_x = Normal(z_mu, z_std).log_prob(z).sum(1)
 
         # Calculate the lower bound
         h = log_p_x_z + log_p_z_y - log_q_y_zc - log_q_z_x
-        zeros = torch.zeros_like(h)
-        ones = torch.ones_like(h)
-        coef = torch.where(uns_mask, ones, torch.exp(log_q_y_zc - log_q_y_x))
-        lb = coef * h + torch.where(uns_mask, zeros, log_q_y_x)
+        coef_sup = torch.exp(log_q_y_zc[n_uns:] - log_q_y_x)
+        coef_uns = torch.ones(n_uns, device=x.device)
+        coef = torch.cat((coef_uns, coef_sup), dim=0)
+        zeros = torch.zeros(n_uns, device=x.device)
+        lb = coef * h + torch.cat((zeros, log_q_y_x), dim=0)
 
         return -lb
