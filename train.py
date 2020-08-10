@@ -15,6 +15,17 @@ PLOT_INTERVAL = 5
 PLOT_IDX = (19, 2, 1, 13, 14, 8, 4, 9, 18, 0)
 
 
+def _collate_train(batch):
+    """A collate function for train data loader.
+    This function makes unsupervised samples come before supervised samples.
+    """
+    batch.sort(key=lambda sample: sample[1])
+    x, t = list(zip(*batch))
+    x = torch.stack(x, dim=0)
+    t = torch.tensor(t)
+    return x, t
+
+
 def train(model, data_loader, optimizer, device, epoch, writer):
     model.train()
 
@@ -102,7 +113,7 @@ def main():
         datasets.get_fashion_mnist(supervision_rate=0.2)
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True,
-        num_workers=2, pin_memory=if_use_cuda)
+        collate_fn=_collate_train, num_workers=2, pin_memory=if_use_cuda)
     test_loader = torch.utils.data.DataLoader(
         test_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=2, pin_memory=if_use_cuda)
